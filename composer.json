@@ -1,0 +1,32 @@
+{
+    "name": "rmk/application",
+    "description": "PSR-15 application infrastructure",
+    "license": "BSD-3-Clause",
+    "autoload": {
+        "psr-4": {
+            "Rmk\\Application\\": "./src/Application/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Rmk\\ApplicationTest\\": "./tests/ApplicationTest/"
+        }
+    },
+    "require": {
+        "php": "^7.4",
+        "rmk/router": "^1.0",
+        "rmk/service-container": "^1.0",
+        "rmk/event-dispatcher": "^1.0",
+        "rmk/http": "^1.0"
+    },
+    "require-dev": {
+        "roave/security-advisories": "dev-master",
+        "phpunit/phpunit": "^9.3"
+    },
+    "authors": [
+        {
+            "name": "Kiril Savchev",
+            "email": "k.savchev@gmail.com"
+        }
+    ]
+}

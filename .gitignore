@@ -1,0 +1,4 @@
+vendor/
+.idea
+data/coverage/*
+!data/coverage/.gitkeep
