@@ -15,6 +15,7 @@ use Psr\Http\Server\RequestHandlerInterface;
 use Rmk\Application\Event\ApplicationInitEvent;
 use Rmk\Application\Event\ApplicationOutput;
 use Rmk\Application\Event\ApplicationShutdownEvent;
+use Rmk\Application\Event\BootstrapEvent;
 use Rmk\Application\Event\EventDispatcherCreatedEvent;
 use Rmk\Application\Event\RequestCreatedEvent;
 use Rmk\Application\Event\RequestHandlerCreatedEvent;
@@ -102,7 +103,7 @@ class Application
         $this->initRequest();
         $this->initResponse();
 
-        $this->initialized = true;
+        $this->isInitialized(true);
         $event = new ApplicationInitEvent($this, [
             'service_container' => $this->getServiceContainer(),
             'event_dispatcher' => $this->getEventDispatcher(),
@@ -114,7 +115,7 @@ class Application
         $this->getEventDispatcher()->dispatch($event);
         $this->serviceContainer = $event->getServiceContainer();
         $this->eventDispatcher = $event->getEventDispatcher();
-        $this->initialized = $event->getInitialized();
+        $this->isInitialized($event->getInitialized());
         $this->router = $event->getRouter();
         $this->request = $event->getRequest();
         $this->response = $event->getResponse();
@@ -131,6 +132,14 @@ class Application
             $this->initOutputFormatter();
             $this->matchRoute();
             $this->initRequestHandler();
+            $this->getEventDispatcher()->dispatch(new BootstrapEvent($this, [
+                'service_container' => $this->getServiceContainer(),
+                'event_dispatcher' => $this->getEventDispatcher(),
+                'router' => $this->getRouter(),
+                'request' => $this->getRequest(),
+                'response' => $this->getResponse(),
+                'initialized' => $this->isInitialized(),
+            ]));
             $this->response = $this->getRequestHandler()->handle($this->request);
         }
         $this->outputResponse();
@@ -147,7 +156,7 @@ class Application
     protected function initServiceContainer(array $config)
     {
         if (array_key_exists('service_container', $config)) {
-            $this->serviceContainer = $config['service_container'];
+            $this->setServiceContainer($config['service_container']);
         } elseif (
             array_key_exists('service_container_class', $config) &&
             class_exists($config['service_container_class'])
@@ -156,7 +165,7 @@ class Application
             unset($config['service_container_class']);
             return $this->initServiceContainer($config);
         } else {
-            $this->serviceContainer = new ServiceContainer();
+            $this->setServiceContainer(new ServiceContainer());
         }
 
         $this->serviceContainer->init($config);
@@ -173,12 +182,12 @@ class Application
             $this->getServiceContainer()->addFactory(ListenerProviderFactory::class, ListenerProviderInterface::class);
             $this->getServiceContainer()->addFactory(EventDispatcherFactory::class, EventDispatcherInterface::class);
         }
-        $this->eventDispatcher = $this->getServiceContainer()->get(EventDispatcherInterface::class);
+        $this->setEventDispatcher($this->getServiceContainer()->get(EventDispatcherInterface::class));
         $event = new EventDispatcherCreatedEvent($this, [
             'event_dispatcher' => $this->eventDispatcher
         ]);
         $this->eventDispatcher->dispatch($event);
-        $this->eventDispatcher = $event->getEventDispatcher();
+        $this->setEventDispatcher($event->getEventDispatcher());
     }
 
     /**
@@ -190,12 +199,12 @@ class Application
             $this->getServiceContainer()->addFactory(AltoRouterAdapterFactory::class, RouterAdapterInterface::class);
             $this->getServiceContainer()->addFactory(RouterServiceFactory::class, RouterServiceInterface::class);
         }
-        $this->router = $this->getServiceContainer()->get(RouterServiceInterface::class);
+        $this->setRouter($this->getServiceContainer()->get(RouterServiceInterface::class));
         $event = new RouterCreatedEvent($this, [
             'router' => $this->router,
         ]);
         $this->getEventDispatcher()->dispatch($event);
-        $this->router = $event->getRouter();
+        $this->setRouter($event->getRouter());
     }
 
     /**
@@ -206,12 +215,12 @@ class Application
         if (!$this->getServiceContainer()->has(ServerRequestInterface::class)) {
             $this->getServiceContainer()->addFactory(RequestFactory::class, ServerRequestInterface::class);
         }
-        $this->request = $this->getServiceContainer()->get(ServerRequestInterface::class);
+        $this->setRequest($this->getServiceContainer()->get(ServerRequestInterface::class));
         $event = new RequestCreatedEvent($this, [
             'request' => $this->getRequest()
         ]);
         $this->getEventDispatcher()->dispatch($event);
-        $this->request = $event->getRequest();
+        $this->setRequest($event->getRequest());
     }
 
     /**
@@ -222,12 +231,12 @@ class Application
         if (!$this->getServiceContainer()->has(ResponseInterface::class)) {
             $this->getServiceContainer()->addFactory(ResponseFactory::class, ResponseInterface::class);
         }
-        $this->response = $this->getServiceContainer()->get(ResponseInterface::class);
+        $this->setResponse($this->getServiceContainer()->get(ResponseInterface::class));
         $event = new ResponseCreatedEvent($this, [
             'response' => $this->getResponse()
         ]);
         $this->getEventDispatcher()->dispatch($event);
-        $this->response = $event->getResponse();
+        $this->setResponse($event->getResponse());
     }
 
     /**
@@ -238,12 +247,12 @@ class Application
         if (!$this->getServiceContainer()->has(RequestHandlerInterface::class)) {
             $this->getServiceContainer()->addFactory(RequestHandlerFactory::class, RequestHandlerInterface::class);
         }
-        $this->requestHandler = $this->getServiceContainer()->get(RequestHandlerInterface::class);
+        $this->setRequestHandler($this->getServiceContainer()->get(RequestHandlerInterface::class));
         $event = new RequestHandlerCreatedEvent($this, [
             'request_handler' => $this->getRequestHandler(),
         ]);
         $this->getEventDispatcher()->dispatch($event);
-        $this->requestHandler = $event->getRequestHandler();
+        $this->setRequestHandler($event->getRequestHandler());
     }
 
     /**
@@ -252,9 +261,9 @@ class Application
     protected function initOutputFormatter(): void
     {
         if ($this->getServiceContainer()->has(OutputInterface::class)) {
-            $this->outputFormatter = $this->getServiceContainer()->get(OutputInterface::class);
+            $this->setOutputFormatter($this->getServiceContainer()->get(OutputInterface::class));
         } else {
-            $this->outputFormatter = new DefaultOutput();
+            $this->setOutputFormatter(new DefaultOutput());
         }
     }
 
@@ -263,12 +272,12 @@ class Application
      */
     protected function matchRoute(): void
     {
-        $this->matchedRoute = $this->getRouter()->match($this->getRequest());
+        $this->setMatchedRoute($this->getRouter()->match($this->getRequest()));
         $event = new RouteMatchedEvent($this, [
             'matched_route' => $this->getMatchedRoute(),
         ]);
         $this->getEventDispatcher()->dispatch($event);
-        $this->matchedRoute = $event->getMatchedRoute();
+        $this->setMatchedRoute($event->getMatchedRoute());
     }
 
     /**
@@ -278,7 +287,7 @@ class Application
     {
         $event = new ApplicationOutput($this, ['response' => $this->getResponse()]);
         $this->getEventDispatcher()->dispatch($event);
-        $this->response = $event->getResponse();
+        $this->setResponse($event->getResponse());
         $this->outputFormatter->output($this->getResponse());
     }
 
@@ -331,10 +340,16 @@ class Application
     }
 
     /**
+     * @param bool|null $isInitialized
+     *
      * @return bool
      */
-    public function isInitialized(): bool
+    public function isInitialized(bool $isInitialized = null): bool
     {
+        if ($isInitialized !== null) {
+            $this->initialized = $isInitialized;
+        }
+
         return $this->initialized;
     }
 
@@ -344,5 +359,85 @@ class Application
     public function getMatchedRoute(): Route
     {
         return $this->matchedRoute;
+    }
+
+    /**
+     * @param ServiceContainerInterface $serviceContainer
+     * @return Application
+     */
+    public function setServiceContainer(ServiceContainerInterface $serviceContainer): Application
+    {
+        $this->serviceContainer = $serviceContainer;
+        return $this;
+    }
+
+    /**
+     * @param EventDispatcherInterface $eventDispatcher
+     * @return Application
+     */
+    public function setEventDispatcher(EventDispatcherInterface $eventDispatcher): Application
+    {
+        $this->eventDispatcher = $eventDispatcher;
+        return $this;
+    }
+
+    /**
+     * @param RouterServiceInterface $router
+     * @return Application
+     */
+    public function setRouter(RouterServiceInterface $router): Application
+    {
+        $this->router = $router;
+        return $this;
+    }
+
+    /**
+     * @param ServerRequestInterface $request
+     * @return Application
+     */
+    public function setRequest(ServerRequestInterface $request): Application
+    {
+        $this->request = $request;
+        return $this;
+    }
+
+    /**
+     * @param ResponseInterface $response
+     * @return Application
+     */
+    public function setResponse(ResponseInterface $response): Application
+    {
+        $this->response = $response;
+        return $this;
+    }
+
+    /**
+     * @param RequestHandlerInterface $requestHandler
+     * @return Application
+     */
+    public function setRequestHandler(RequestHandlerInterface $requestHandler): Application
+    {
+        $this->requestHandler = $requestHandler;
+        return $this;
+    }
+
+    /**
+     * @param Route $matchedRoute
+     * @return Application
+     */
+    public function setMatchedRoute(Route $matchedRoute): Application
+    {
+        $this->matchedRoute = $matchedRoute;
+        return $this;
+    }
+
+    /**
+     * @param OutputInterface $outputFormatter
+     * @return Application
+     */
+    public function setOutputFormatter(OutputInterface $outputFormatter): Application
+    {
+        $this->outputFormatter = $outputFormatter;
+        return $this;
     }
 }
